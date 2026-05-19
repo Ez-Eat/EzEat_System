@@ -1,8 +1,8 @@
 import { prisma } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
-export async function GET(_req: Request, { params }: { params: { code: string } }) {
-  const { code } = params
+export async function GET(_req: Request, { params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params
 
   const project = await prisma.clientProject.findUnique({
     where: { accessCode: code },

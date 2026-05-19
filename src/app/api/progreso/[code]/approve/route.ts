@@ -4,9 +4,9 @@ import type { ProjectApproval } from '@/actions/client-projects'
 
 export async function POST(
   req: Request,
-  { params }: { params: { code: string } },
+  { params }: { params: Promise<{ code: string }> },
 ) {
-  const { code } = params
+  const { code } = await params
 
   let body: { moduleIndex: number; status: 'approved' | 'rejected'; note?: string; authorName: string }
   try {

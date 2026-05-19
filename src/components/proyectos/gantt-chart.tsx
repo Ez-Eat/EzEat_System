@@ -10,7 +10,7 @@ interface Props {
 
 // Parse as UTC noon to avoid timezone shifts between server (UTC) and client (local tz)
 function parseDate(s: string) {
-  const [y, m, d] = s.split('-').map(Number)
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number]
   return new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
 }
 

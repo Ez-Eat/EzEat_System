@@ -141,8 +141,8 @@ function ClientFeedback({
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default async function EditProyectoPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default async function EditProyectoPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const project = await getClientProject(id)
   if (!project) notFound()
 

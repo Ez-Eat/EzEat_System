@@ -9,9 +9,10 @@ import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Page({ params }: { params: { id: string } }) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const restaurant = await prisma.restaurant.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { name: true, ezeatId: true },
   })
   if (!restaurant) notFound()
@@ -31,7 +32,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   return (
     <div className="max-w-5xl mx-auto">
       <Link
-        href={`/restaurants/${params.id}`}
+        href={`/restaurants/${id}`}
         className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 mb-4"
       >
         <ArrowLeft size={16} /> Volver al restaurante
@@ -62,14 +63,14 @@ export default async function Page({ params }: { params: { id: string } }) {
       {plans.length > 0 && (
         <PlanSelector
           restaurantId={restaurant.ezeatId}
-          prismaRestaurantId={params.id}
+          prismaRestaurantId={id}
           plans={plans}
         />
       )}
 
       <FeaturesForm
         restaurantId={restaurant.ezeatId}
-        prismaRestaurantId={params.id}
+        prismaRestaurantId={id}
         initialFeatures={features}
       />
     </div>
