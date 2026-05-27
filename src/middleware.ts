@@ -5,7 +5,8 @@ import { NextResponse } from 'next/server'
 const { auth } = NextAuth(authConfig)
 
 const ADMIN_ONLY = ['/accounts', '/audit']
-const PUBLIC = ['/login', '/progreso']
+const PUBLIC = ['/login']
+const PUBLIC_NO_REDIRECT = ['/progreso']
 const SESSION_COOKIES = ['authjs.session-token', '__Secure-authjs.session-token']
 
 export default auth((req) => {
@@ -14,6 +15,10 @@ export default auth((req) => {
 
   if (PUBLIC.some((p) => pathname.startsWith(p))) {
     if (session) return NextResponse.redirect(new URL('/dashboard', req.url))
+    return NextResponse.next()
+  }
+
+  if (PUBLIC_NO_REDIRECT.some((p) => pathname.startsWith(p))) {
     return NextResponse.next()
   }
 
