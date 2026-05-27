@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 const { auth } = NextAuth(authConfig)
 
 const ADMIN_ONLY = ['/accounts', '/audit']
-const PUBLIC = ['/login']
+const PUBLIC = ['/login', '/progreso']
 const SESSION_COOKIES = ['authjs.session-token', '__Secure-authjs.session-token']
 
 export default auth((req) => {
