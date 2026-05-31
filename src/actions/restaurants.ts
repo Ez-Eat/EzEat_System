@@ -22,19 +22,39 @@ function toDbStatus(s: string): RestaurantStatus {
 
 export async function listRestaurants() {
   await requireSession()
+
+  // 1. Data viva de los backends que respondan (best-effort).
+  let live: Awaited<ReturnType<typeof getRestaurants>> = []
   try {
-    const restaurants = await getRestaurants()
-    for (const r of restaurants) {
+    live = await getRestaurants()
+    for (const r of live) {
       await prisma.restaurant.upsert({
         where: { ezeatId: r.id },
         update: { name: r.name, status: toDbStatus(r.status) },
         create: { ezeatId: r.id, name: r.name, status: toDbStatus(r.status) },
       })
     }
-    return restaurants
   } catch {
-    return prisma.restaurant.findMany({ orderBy: { name: 'asc' } })
+    // ignora: caemos al registro de Postgres
   }
+
+  const liveById = new Map(live.map(r => [r.id, r]))
+
+  // 2. Fuente de verdad = restaurantes registrados en Postgres.
+  //    Aparecen aunque su backend esté caído (marcados con su último estado).
+  const registered = await prisma.restaurant.findMany({ orderBy: { name: 'asc' } })
+
+  return registered.map(r => {
+    const l = liveById.get(r.ezeatId)
+    return {
+      id: r.ezeatId,
+      ezeatId: r.ezeatId,
+      name: l?.name ?? r.name,
+      status: l?.status ?? r.status.toLowerCase(),
+      plan: l?.plan ?? 'free',
+      online: !!l,
+    }
+  })
 }
 
 export async function getRestaurantDetail(ezeatId: string) {
