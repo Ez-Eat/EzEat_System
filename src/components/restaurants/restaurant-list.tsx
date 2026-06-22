@@ -237,6 +237,42 @@ export function RestaurantList({ restaurants, isAdmin }: { restaurants: Restaura
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">
+                  Subdominio (slug)
+                </label>
+                <div className="flex items-center">
+                  <input
+                    name="slug"
+                    required
+                    placeholder="tacoselrey"
+                    pattern="[a-z0-9\-]+"
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                  <span className="px-3 py-2.5 border border-l-0 border-slate-200 rounded-r-lg bg-slate-50 text-sm text-slate-500">.ezeat.com.mx</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">Plan</label>
+                  <select name="plan" className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                    <option value="tier1">Tier 1 — Operación</option>
+                    <option value="tier2">Tier 2 — Operación + IA</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">Color</label>
+                  <input name="color" type="color" defaultValue="#e02a36" className="w-full h-[42px] px-1 py-1 border border-slate-200 rounded-lg cursor-pointer" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">Correo del dueño</label>
+                <input name="ownerEmail" type="email" required placeholder="dueno@correo.com" className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">Contraseña del dueño</label>
+                <input name="ownerPassword" type="text" required minLength={6} placeholder="mín. 6 caracteres" className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">
                   Notas internas
                   <span className="ml-1.5 text-slate-400 normal-case font-normal text-[11px]">opcional</span>
                 </label>

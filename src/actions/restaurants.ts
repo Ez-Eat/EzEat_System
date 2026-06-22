@@ -2,6 +2,7 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getRestaurants, updateRestaurantStatus } from '@/lib/ezeat-client'
+import { fetchBackend } from '@/lib/backend-registry'
 import { RestaurantStatus } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
@@ -95,13 +96,35 @@ export async function createRestaurant(formData: FormData) {
   const user = session?.user as { id?: string; role?: string } | undefined
   if (!session || user?.role !== 'ADMIN') throw new Error('Forbidden')
 
-  const name  = (formData.get('name') as string)?.trim()
-  const notes = (formData.get('notes') as string) || null
-  if (!name) throw new Error('Nombre requerido')
+  const name          = (formData.get('name') as string)?.trim()
+  const slug          = (formData.get('slug') as string)?.trim().toLowerCase()
+  const ownerEmail    = (formData.get('ownerEmail') as string)?.trim().toLowerCase()
+  const ownerPassword = (formData.get('ownerPassword') as string) || ''
+  const plan          = (formData.get('plan') as string) || 'tier1'
+  const primaryColor  = (formData.get('color') as string) || '#e02a36'
+  const notes         = (formData.get('notes') as string) || null
 
-  const ezeatId = `manual-${Date.now()}`
+  if (!name) throw new Error('Nombre requerido')
+  if (!slug || !/^[a-z0-9-]+$/.test(slug)) throw new Error('Slug inválido (a-z, 0-9, guiones)')
+  if (!ownerEmail) throw new Error('Correo del dueño requerido')
+  if (!ownerPassword || ownerPassword.length < 6) throw new Error('Contraseña mín. 6 caracteres')
+
+  const cfg = {
+    baseUrl: process.env.EZEAT_API_URL || '',
+    apiKey: process.env.EZEAT_API_KEY || '',
+    label: 'saas',
+  }
+  if (!cfg.baseUrl || !cfg.apiKey) throw new Error('Backend SaaS no configurado (EZEAT_API_URL / EZEAT_API_KEY)')
+
+  // Provisiona el tenant real en el backend SaaS (crea restaurante + dueño + features del tier)
+  const result = await fetchBackend<{ success: boolean; restaurant: { id: string; slug: string; url: string } }>(
+    cfg, '/internal/restaurants',
+    { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor }) }
+  )
+
+  // Registro local en EzEat System
   await prisma.restaurant.create({
-    data: { name, ezeatId, status: RestaurantStatus.ACTIVE, notes },
+    data: { name, ezeatId: result.restaurant.id, status: RestaurantStatus.ACTIVE, notes },
   })
   revalidatePath('/restaurants')
 }
