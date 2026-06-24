@@ -21,6 +21,32 @@ function toDbStatus(s: string): RestaurantStatus {
   return map[s.toLowerCase()] ?? RestaurantStatus.UNKNOWN
 }
 
+export interface SaasMetrics {
+  mrr: number
+  arr: number
+  currency: string
+  tenants: { total: number; active: number; inactive: number; newThisMonth: number }
+  churnRate: number
+  byPlan: Record<string, number>
+  perTenant: { id: string; name: string; slug: string; plan: string; active: boolean; mrr: number; orders30d: number; revenue30d: number }[]
+}
+
+export async function getSaasMetrics(): Promise<SaasMetrics | null> {
+  await requireSession()
+  const cfg = {
+    baseUrl: process.env.EZEAT_API_URL || '',
+    apiKey: process.env.EZEAT_API_KEY || '',
+    label: 'saas',
+  }
+  if (!cfg.baseUrl || !cfg.apiKey) return null
+  try {
+    const res = await fetchBackend<{ success: boolean; data: SaasMetrics }>(cfg, '/internal/metrics', { revalidate: 60 })
+    return res.data
+  } catch {
+    return null
+  }
+}
+
 export async function listRestaurants() {
   await requireSession()
 
@@ -101,7 +127,9 @@ export async function createRestaurant(formData: FormData) {
   const ownerEmail    = (formData.get('ownerEmail') as string)?.trim().toLowerCase()
   const ownerPassword = (formData.get('ownerPassword') as string) || ''
   const plan          = (formData.get('plan') as string) || 'tier1'
-  const primaryColor  = (formData.get('color') as string) || '#e02a36'
+  const primaryColor  = (formData.get('color') as string) || '#2b49f3'
+  const welcomeMessage = (formData.get('welcomeMessage') as string)?.trim() || ''
+  const logo          = formData.get('logo') as File | null
   const notes         = (formData.get('notes') as string) || null
 
   if (!name) throw new Error('Nombre requerido')
@@ -119,8 +147,24 @@ export async function createRestaurant(formData: FormData) {
   // Provisiona el tenant real en el backend SaaS (crea restaurante + dueño + features del tier)
   const result = await fetchBackend<{ success: boolean; restaurant: { id: string; slug: string; url: string } }>(
     cfg, '/internal/restaurants',
-    { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor }) }
+    { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor, welcomeMessage }) }
   )
+
+  // Logo (opcional): subida multipart al backend SaaS → S3 → branding.logoUrl
+  if (logo && logo.size > 0) {
+    const fd = new FormData()
+    fd.append('logo', logo)
+    const logoRes = await fetch(`${cfg.baseUrl}/internal/restaurants/${result.restaurant.id}/logo`, {
+      method: 'PUT',
+      headers: { 'x-api-key': cfg.apiKey }, // sin Content-Type: el boundary lo pone FormData
+      body: fd,
+      cache: 'no-store',
+    })
+    if (!logoRes.ok) {
+      const txt = await logoRes.text().catch(() => '')
+      throw new Error(`Logo no subido (${logoRes.status}): ${txt.slice(0, 200)}`)
+    }
+  }
 
   // Registro local en EzEat System
   await prisma.restaurant.create({

@@ -260,8 +260,22 @@ export function RestaurantList({ restaurants, isAdmin }: { restaurants: Restaura
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">Color</label>
-                  <input name="color" type="color" defaultValue="#e02a36" className="w-full h-[42px] px-1 py-1 border border-slate-200 rounded-lg cursor-pointer" />
+                  <input name="color" type="color" defaultValue="#2b49f3" className="w-full h-[42px] px-1 py-1 border border-slate-200 rounded-lg cursor-pointer" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">
+                  Logo
+                  <span className="ml-1.5 text-slate-400 normal-case font-normal text-[11px]">opcional · PNG/JPG/WEBP</span>
+                </label>
+                <input name="logo" type="file" accept="image/png,image/jpeg,image/webp" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800 file:cursor-pointer" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">
+                  Mensaje de bienvenida
+                  <span className="ml-1.5 text-slate-400 normal-case font-normal text-[11px]">opcional</span>
+                </label>
+                <input name="welcomeMessage" placeholder="Vacío = «Bienvenido a [nombre]»" className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-widest mb-1.5">Correo del dueño</label>
