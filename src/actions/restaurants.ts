@@ -171,4 +171,11 @@ export async function createRestaurant(formData: FormData) {
     data: { name, ezeatId: result.restaurant.id, status: RestaurantStatus.ACTIVE, notes },
   })
   revalidatePath('/restaurants')
+
+  return {
+    id: result.restaurant.id,
+    slug: result.restaurant.slug || slug,
+    url: result.restaurant.url || `https://${slug}.ezeat.com.mx`,
+    plan,
+  }
 }

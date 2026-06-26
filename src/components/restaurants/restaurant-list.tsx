@@ -100,13 +100,13 @@ export function RestaurantList({ restaurants, isAdmin }: { restaurants: Restaura
             ))}
           </div>
           {isAdmin && (
-            <button
-              onClick={() => setShowModal(true)}
+            <Link
+              href="/restaurants/new"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <Plus size={13} />
-              Agregar negocio
-            </button>
+              Crear negocio
+            </Link>
           )}
         </div>
 
