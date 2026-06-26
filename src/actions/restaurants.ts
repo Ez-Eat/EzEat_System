@@ -117,10 +117,20 @@ export async function updateRestaurant(id: string, formData: FormData) {
   revalidatePath('/restaurants')
 }
 
-export async function createRestaurant(formData: FormData) {
+export type CreateRestaurantResult =
+  | { ok: true; id: string; slug: string; url: string; plan: string }
+  | { ok: false; error: string }
+
+function cleanBackendError(msg: string): string {
+  // Extrae el mensaje útil de "Backend saas 500: {json...}"
+  const m = msg.match(/"message"\s*:\s*"([^"]+)"/)
+  return m?.[1] ?? msg.replace(/^Backend \w+ \d+:\s*/, '')
+}
+
+export async function createRestaurant(formData: FormData): Promise<CreateRestaurantResult> {
   const session = await auth()
   const user = session?.user as { id?: string; role?: string } | undefined
-  if (!session || user?.role !== 'ADMIN') throw new Error('Forbidden')
+  if (!session || user?.role !== 'ADMIN') return { ok: false, error: 'No autorizado' }
 
   const name          = (formData.get('name') as string)?.trim()
   const slug          = (formData.get('slug') as string)?.trim().toLowerCase()
@@ -132,50 +142,56 @@ export async function createRestaurant(formData: FormData) {
   const logo          = formData.get('logo') as File | null
   const notes         = (formData.get('notes') as string) || null
 
-  if (!name) throw new Error('Nombre requerido')
-  if (!slug || !/^[a-z0-9-]+$/.test(slug)) throw new Error('Slug inválido (a-z, 0-9, guiones)')
-  if (!ownerEmail) throw new Error('Correo del dueño requerido')
-  if (!ownerPassword || ownerPassword.length < 6) throw new Error('Contraseña mín. 6 caracteres')
+  if (!name) return { ok: false, error: 'Nombre requerido' }
+  if (!slug || !/^[a-z0-9-]+$/.test(slug)) return { ok: false, error: 'Slug inválido (a-z, 0-9, guiones)' }
+  if (!ownerEmail) return { ok: false, error: 'Correo del dueño requerido' }
+  if (!ownerPassword || ownerPassword.length < 6) return { ok: false, error: 'Contraseña mín. 6 caracteres' }
 
   const cfg = {
     baseUrl: process.env.EZEAT_API_URL || '',
     apiKey: process.env.EZEAT_API_KEY || '',
     label: 'saas',
   }
-  if (!cfg.baseUrl || !cfg.apiKey) throw new Error('Backend SaaS no configurado (EZEAT_API_URL / EZEAT_API_KEY)')
+  if (!cfg.baseUrl || !cfg.apiKey) return { ok: false, error: 'Backend SaaS no configurado (EZEAT_API_URL / EZEAT_API_KEY)' }
 
-  // Provisiona el tenant real en el backend SaaS (crea restaurante + dueño + features del tier)
-  const result = await fetchBackend<{ success: boolean; restaurant: { id: string; slug: string; url: string } }>(
-    cfg, '/internal/restaurants',
-    { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor, welcomeMessage }) }
-  )
+  try {
+    // Provisiona el tenant real en el backend SaaS (crea restaurante + dueño + features del tier)
+    const result = await fetchBackend<{ success: boolean; restaurant: { id: string; slug: string; url: string } }>(
+      cfg, '/internal/restaurants',
+      { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor, welcomeMessage }) }
+    )
 
-  // Logo (opcional): subida multipart al backend SaaS → S3 → branding.logoUrl
-  if (logo && logo.size > 0) {
-    const fd = new FormData()
-    fd.append('logo', logo)
-    const logoRes = await fetch(`${cfg.baseUrl}/internal/restaurants/${result.restaurant.id}/logo`, {
-      method: 'PUT',
-      headers: { 'x-api-key': cfg.apiKey }, // sin Content-Type: el boundary lo pone FormData
-      body: fd,
-      cache: 'no-store',
-    })
-    if (!logoRes.ok) {
-      const txt = await logoRes.text().catch(() => '')
-      throw new Error(`Logo no subido (${logoRes.status}): ${txt.slice(0, 200)}`)
+    // Logo (opcional): subida multipart al backend SaaS → S3 → branding.logoUrl
+    if (logo && logo.size > 0) {
+      const fd = new FormData()
+      fd.append('logo', logo)
+      const logoRes = await fetch(`${cfg.baseUrl}/internal/restaurants/${result.restaurant.id}/logo`, {
+        method: 'PUT',
+        headers: { 'x-api-key': cfg.apiKey }, // sin Content-Type: el boundary lo pone FormData
+        body: fd,
+        cache: 'no-store',
+      })
+      if (!logoRes.ok) {
+        const txt = await logoRes.text().catch(() => '')
+        // El negocio quedó creado; el logo se puede subir luego desde el panel.
+        console.error('Logo no subido:', logoRes.status, txt.slice(0, 200))
+      }
     }
-  }
 
-  // Registro local en EzEat System
-  await prisma.restaurant.create({
-    data: { name, ezeatId: result.restaurant.id, status: RestaurantStatus.ACTIVE, notes },
-  })
-  revalidatePath('/restaurants')
+    // Registro local en EzEat System
+    await prisma.restaurant.create({
+      data: { name, ezeatId: result.restaurant.id, status: RestaurantStatus.ACTIVE, notes },
+    })
+    revalidatePath('/restaurants')
 
-  return {
-    id: result.restaurant.id,
-    slug: result.restaurant.slug || slug,
-    url: result.restaurant.url || `https://${slug}.ezeat.com.mx`,
-    plan,
+    return {
+      ok: true,
+      id: result.restaurant.id,
+      slug: result.restaurant.slug || slug,
+      url: result.restaurant.url || `https://${slug}.ezeat.com.mx`,
+      plan,
+    }
+  } catch (err) {
+    return { ok: false, error: cleanBackendError(err instanceof Error ? err.message : 'Error al crear el negocio') }
   }
 }

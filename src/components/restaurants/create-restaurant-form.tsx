@@ -31,9 +31,10 @@ export function CreateRestaurantForm() {
       fd.set('slug', slug)
       fd.set('plan', plan)
       const res = await createRestaurant(fd)
+      if (!res.ok) { setError(res.error); return }
       setCreated({ url: res.url, slug: res.slug, plan: res.plan })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear el negocio')
+      setError(err instanceof Error ? err.message : 'Error de conexión')
     } finally {
       setCreating(false)
     }
