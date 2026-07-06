@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createRestaurant } from '@/actions/restaurants'
-import { Store, Globe, Palette, Image as ImageIcon, Mail, Lock, Check, Loader2, ArrowRight, Copy, ExternalLink } from 'lucide-react'
+import { Store, Globe, Palette, Image as ImageIcon, Mail, Lock, Check, Loader2, ArrowRight, Copy, ExternalLink, Phone, Calendar, Contact } from 'lucide-react'
 
 const slugify = (s: string) =>
   s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
@@ -118,13 +118,16 @@ export function CreateRestaurantForm() {
 
       {/* Marca */}
       <Section icon={Palette} title="Marca" optional>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Color">
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Color primario">
             <input name="color" type="color" defaultValue="#2b49f3" className="w-full h-[42px] px-1 py-1 border border-slate-200 rounded-lg cursor-pointer" />
+          </Field>
+          <Field label="Color secundario">
+            <input name="secondaryColor" type="color" defaultValue="#5170ff" className="w-full h-[42px] px-1 py-1 border border-slate-200 rounded-lg cursor-pointer" />
           </Field>
           <Field label="Logo" hint="PNG/JPG/WEBP">
             <label className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-500 cursor-pointer hover:bg-slate-50">
-              <ImageIcon size={14} /> Subir logo
+              <ImageIcon size={14} /> Logo
               <input name="logo" type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const l = e.currentTarget.parentElement?.querySelector('span'); if (l) l.textContent = e.target.files?.[0]?.name || '' }} />
               <span className="text-xs text-slate-400 truncate" />
             </label>
@@ -133,6 +136,38 @@ export function CreateRestaurantForm() {
         <Field label="Mensaje de bienvenida" hint="Vacío = «Bienvenido a [nombre]».">
           <input name="welcomeMessage" placeholder="Bienvenido a Tacos El Rey" className={inputCls} />
         </Field>
+      </Section>
+
+      {/* Detalles y contacto — se guardan al crear, sin editar después */}
+      <Section icon={Contact} title="Detalles y contacto" optional>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Dominio" hint="Vacío = subdominio .ezeat.com.mx.">
+            <div className="relative">
+              <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input name="domain" placeholder="tacoselrey.com" className={`${inputCls} pl-9`} />
+            </div>
+          </Field>
+          <Field label="Fecha de cobro" hint="Día de cobro mensual.">
+            <div className="relative">
+              <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input name="paymentDate" type="date" className={`${inputCls} pl-9`} />
+            </div>
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Correo de contacto" hint="Vacío = correo del dueño.">
+            <div className="relative">
+              <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input name="contactEmail" type="email" placeholder="contacto@negocio.com" className={`${inputCls} pl-9`} />
+            </div>
+          </Field>
+          <Field label="Teléfono de contacto">
+            <div className="relative">
+              <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input name="contactPhone" type="tel" placeholder="55 1234 5678" className={`${inputCls} pl-9`} />
+            </div>
+          </Field>
+        </div>
       </Section>
 
       {/* Dueño */}

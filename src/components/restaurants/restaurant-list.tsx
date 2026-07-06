@@ -1,8 +1,8 @@
 'use client'
 import { useState, useRef } from 'react'
 import Link from 'next/link'
-import { Search, ChevronRight, Plus, X, Building2 } from 'lucide-react'
-import { createRestaurant } from '@/actions/restaurants'
+import { Search, ChevronRight, Plus, X, Building2, Trash2, Loader2 } from 'lucide-react'
+import { createRestaurant, deleteRestaurant } from '@/actions/restaurants'
 import { useRouter } from 'next/navigation'
 
 interface Restaurant {
@@ -50,8 +50,23 @@ export function RestaurantList({ restaurants, isAdmin }: { restaurants: Restaura
   const [page, setPage]             = useState(1)
   const [showModal, setShowModal]   = useState(false)
   const [creating, setCreating]     = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const formRef                     = useRef<HTMLFormElement>(null)
   const router                      = useRouter()
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`¿Eliminar "${name}"?\n\nSe borra el negocio del sistema y del SaaS (restaurante + accesos). Esta acción no se puede deshacer.`)) return
+    setDeletingId(id)
+    try {
+      const res = await deleteRestaurant(id)
+      if (!res.ok) { alert(res.error); return }
+      router.refresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const filtered = restaurants.filter((r) =>
     r.name.toLowerCase().includes(search.toLowerCase()) && matchStatus(r.status, statusFilter)
@@ -150,13 +165,25 @@ export function RestaurantList({ restaurants, isAdmin }: { restaurants: Restaura
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        <Link
-                          href={`/restaurants/${r.id ?? r.ezeatId}`}
-                          className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-                        >
-                          Ver detalle
-                          <ChevronRight size={13} />
-                        </Link>
+                        <div className="flex items-center justify-end gap-3">
+                          <Link
+                            href={`/restaurants/${r.id ?? r.ezeatId}`}
+                            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+                          >
+                            Ver detalle
+                            <ChevronRight size={13} />
+                          </Link>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDelete(id, r.name)}
+                              disabled={deletingId === id}
+                              title="Eliminar negocio"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {deletingId === id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )

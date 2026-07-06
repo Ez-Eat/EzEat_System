@@ -1,7 +1,7 @@
 'use server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { getRestaurants, updateRestaurantStatus } from '@/lib/ezeat-client'
+import { getRestaurants, updateRestaurantStatus, deleteRestaurant as deleteRestaurantBackend } from '@/lib/ezeat-client'
 import { fetchBackend } from '@/lib/backend-registry'
 import { RestaurantStatus } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
@@ -89,6 +89,25 @@ export async function getRestaurantDetail(ezeatId: string) {
   return prisma.restaurant.findFirst({ where: { ezeatId } })
 }
 
+export type DeleteRestaurantResult = { ok: true } | { ok: false; error: string }
+
+export async function deleteRestaurant(ezeatId: string): Promise<DeleteRestaurantResult> {
+  const user = await requireSession()
+  if (user.role !== 'ADMIN') return { ok: false, error: 'No autorizado' }
+
+  // 1. Borra el tenant en el backend SaaS (best-effort: si el backend está caído,
+  //    igual quitamos el registro local para que salga de la lista).
+  await deleteRestaurantBackend(ezeatId).catch((e) => {
+    console.error('Backend delete falló (se elimina registro local igual):', e instanceof Error ? e.message : e)
+  })
+
+  // 2. Borra el registro local (fuente de verdad de la lista).
+  await prisma.restaurant.deleteMany({ where: { ezeatId } })
+
+  revalidatePath('/restaurants')
+  return { ok: true }
+}
+
 export async function patchRestaurantStatus(ezeatId: string, status: string) {
   const user = await requireSession()
   if (user.role !== 'ADMIN') throw new Error('Forbidden')
@@ -138,9 +157,16 @@ export async function createRestaurant(formData: FormData): Promise<CreateRestau
   const ownerPassword = (formData.get('ownerPassword') as string) || ''
   const plan          = (formData.get('plan') as string) || 'tier1'
   const primaryColor  = (formData.get('color') as string) || '#2b49f3'
+  const secondaryColor = (formData.get('secondaryColor') as string) || '#5170ff'
   const welcomeMessage = (formData.get('welcomeMessage') as string)?.trim() || ''
   const logo          = formData.get('logo') as File | null
-  const notes         = (formData.get('notes') as string) || null
+  const notes         = (formData.get('notes') as string)?.trim() || null
+  // Detalles del negocio (registro local EzEat System) — guardados al crear
+  const domain        = (formData.get('domain') as string)?.trim() || null
+  const contactEmail  = (formData.get('contactEmail') as string)?.trim() || null
+  const contactPhone  = (formData.get('contactPhone') as string)?.trim() || null
+  const rawPayDate    = (formData.get('paymentDate') as string) || ''
+  const paymentDate   = rawPayDate ? new Date(rawPayDate) : null
 
   if (!name) return { ok: false, error: 'Nombre requerido' }
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) return { ok: false, error: 'Slug inválido (a-z, 0-9, guiones)' }
@@ -158,7 +184,7 @@ export async function createRestaurant(formData: FormData): Promise<CreateRestau
     // Provisiona el tenant real en el backend SaaS (crea restaurante + dueño + features del tier)
     const result = await fetchBackend<{ success: boolean; restaurant: { id: string; slug: string; url: string } }>(
       cfg, '/internal/restaurants',
-      { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor, welcomeMessage }) }
+      { method: 'POST', body: JSON.stringify({ slug, name, ownerEmail, ownerPassword, plan, primaryColor, secondaryColor, welcomeMessage }) }
     )
 
     // Logo (opcional): subida multipart al backend SaaS → S3 → branding.logoUrl
@@ -178,9 +204,18 @@ export async function createRestaurant(formData: FormData): Promise<CreateRestau
       }
     }
 
-    // Registro local en EzEat System
+    // Registro local en EzEat System — con TODOS los detalles capturados al crear
     await prisma.restaurant.create({
-      data: { name, ezeatId: result.restaurant.id, status: RestaurantStatus.ACTIVE, notes },
+      data: {
+        name,
+        ezeatId: result.restaurant.id,
+        status: RestaurantStatus.ACTIVE,
+        notes,
+        domain: domain ?? `${slug}.ezeat.com.mx`,
+        contactEmail: contactEmail ?? ownerEmail,
+        contactPhone,
+        paymentDate,
+      },
     })
     revalidatePath('/restaurants')
 

@@ -51,3 +51,11 @@ export async function updateRestaurantStatus(ezeatId: string, status: string): P
     revalidate: 0,
   })
 }
+
+export async function deleteRestaurant(ezeatId: string): Promise<void> {
+  const backend = await resolveBackendByEzeatId(ezeatId)
+  await fetchBackend(backend, `/internal/restaurants/${ezeatId}`, {
+    method: 'DELETE',
+    revalidate: 0,
+  })
+}
