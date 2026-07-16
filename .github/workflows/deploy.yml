@@ -14,7 +14,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Gate: los tests deben pasar antes de desplegar. Si fallan, NO se despliega.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Tests (rate limit, crypto/vault, validación)
+        run: npm test
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
