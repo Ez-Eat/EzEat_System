@@ -35,55 +35,23 @@ async function main() {
 }
 
 /**
- * Opción A multi-instancia: registra los restaurantes + sus backends propios.
+ * NO se siembran Backends a propósito.
+ *
+ * Esto sembraba dos instancias hardcodeadas de la "Opción A multi-instancia"
+ * (un backend Ez-eat por restaurante): QueFresa y tacoshabanas.ezeat.com.mx.
+ * Esa arquitectura quedó atrás — hoy UN SaaS multi-tenant sirve a todos los
+ * negocios y el System le pega por EZEAT_API_URL.
+ *
+ * El daño no era cosmético: getRestaurants() usa los Backend registrados y solo
+ * cae a EZEAT_API_URL cuando NO hay ninguno. Al sembrarlos, el panel consultaba
+ * un backend muerto (tacoshabanas se dio de baja) e ignoraba el SaaS real, así
+ * que el directorio de negocios salía vacío o incompleto. Se detectó el
+ * 2026-07-16 al reconstruir la base y hubo que borrarlos a mano.
+ *
+ * Registra un Backend SOLO si de verdad levantas una instancia aparte, y hazlo
+ * desde el panel con sus datos reales, no desde el seed.
  */
-async function seedBackends() {
-  const INTERNAL_KEY = process.env.EZEAT_API_KEY || 'ezeat-internal-secret-2026'
-
-  const instances = [
-    {
-      name: 'QueFresa',
-      ezeatId: '69bb8331ce58d760c4324a9d',
-      domain: 'quefresa.ezeat.com.mx',
-      backend: {
-        label: 'QueFresa',
-        baseUrl: process.env.SEED_QUEFRESA_URL || 'https://quefresa.ezeat.com.mx',
-        apiKey: INTERNAL_KEY,
-        port: 3000,
-      },
-    },
-    {
-      name: "Tacos Habanna's",
-      ezeatId: '6a1bc491bc163d2432e3ea1a',
-      domain: 'tacoshabanas.ezeat.com.mx',
-      backend: {
-        label: 'Habanas',
-        baseUrl: process.env.SEED_HABANAS_URL || 'https://tacoshabanas.ezeat.com.mx',
-        apiKey: INTERNAL_KEY,
-        port: 3002,
-      },
-    },
-  ]
-
-  for (const inst of instances) {
-    const restaurant = await prisma.restaurant.upsert({
-      where: { ezeatId: inst.ezeatId },
-      update: { name: inst.name, domain: inst.domain, status: 'ACTIVE' },
-      create: { name: inst.name, ezeatId: inst.ezeatId, domain: inst.domain, status: 'ACTIVE' },
-    })
-
-    await prisma.backend.upsert({
-      where: { restaurantId: restaurant.id },
-      update: { ...inst.backend, active: true },
-      create: { restaurantId: restaurant.id, ...inst.backend, active: true },
-    })
-
-    console.log(`Backend registrado: ${inst.backend.label} → ${inst.backend.baseUrl}`)
-  }
-}
-
 main()
-  .then(seedBackends)
   .catch(console.error)
   .finally(async () => {
     await prisma.$disconnect()
