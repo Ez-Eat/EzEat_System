@@ -1,7 +1,15 @@
 'use server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { getRestaurants, updateRestaurantStatus, deleteRestaurant as deleteRestaurantBackend } from '@/lib/ezeat-client'
+import {
+  getRestaurants,
+  updateRestaurantStatus,
+  deleteRestaurant as deleteRestaurantBackend,
+  getPlatformSettings,
+  savePlatformSettings,
+  type EzEatRestaurant,
+  type PlatformSettings,
+} from '@/lib/ezeat-client'
 import { fetchBackend } from '@/lib/backend-registry'
 import { RestaurantStatus } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
@@ -89,31 +97,169 @@ export async function getRestaurantDetail(ezeatId: string) {
   return prisma.restaurant.findFirst({ where: { ezeatId } })
 }
 
+export interface SubdomainRow {
+  ezeatId: string
+  name: string
+  slug: string
+  url: string
+  status: string
+  plan: string
+  createdAt: string | null
+  suspendedAt: string | null
+  suspensionReason: string
+  /** true = el SaaS lo reporta vivo. false = solo queda el registro local (huérfano). */
+  live: boolean
+  /** true = vive en el SaaS pero nadie lo registró aquí. */
+  unregistered: boolean
+}
+
+const ROOT_DOMAIN = process.env.EZEAT_ROOT_DOMAIN || 'ezeat.com.mx'
+
+/**
+ * Todos los subdominios que EXISTEN de verdad.
+ *
+ * La fuente de verdad es el SaaS (Restaurant.slug), no el registro de Postgres:
+ * el subdominio sirve porque el tenant vive en Mongo, no porque haya una fila
+ * aquí. Se cruzan ambos lados para que salten los dos casos peligrosos:
+ *   - huérfano local: registrado aquí, ya no en el SaaS (nada que borrar).
+ *   - sin registrar : vivo en el SaaS pero invisible en el panel — el caso que
+ *     dejaba subdominios sirviendo sin que nadie supiera.
+ */
+export async function listSubdomains(): Promise<SubdomainRow[]> {
+  await requireSession()
+
+  let live: EzEatRestaurant[] = []
+  let backendDown = false
+  try {
+    live = await getRestaurants()
+  } catch {
+    backendDown = true
+  }
+
+  const registered = await prisma.restaurant.findMany()
+  const regByEzeatId = new Map(registered.map(r => [r.ezeatId, r]))
+  const liveById = new Map(live.map(r => [r.id, r]))
+
+  const rows: SubdomainRow[] = live.map(r => {
+    const reg = regByEzeatId.get(r.id)
+    return {
+      ezeatId: r.id,
+      name: r.name,
+      slug: r.slug,
+      url: reg?.domain || (r.slug ? `${r.slug}.${ROOT_DOMAIN}` : ''),
+      status: r.status,
+      plan: r.plan,
+      createdAt: r.createdAt ?? null,
+      suspendedAt: r.suspendedAt ?? null,
+      suspensionReason: r.suspensionReason ?? '',
+      live: true,
+      unregistered: !reg,
+    }
+  })
+
+  // Registros locales que el SaaS ya no reporta. Si el backend está caído no
+  // sabemos nada, así que no los marcamos como huérfanos por error.
+  if (!backendDown) {
+    for (const reg of registered) {
+      if (liveById.has(reg.ezeatId)) continue
+      rows.push({
+        ezeatId: reg.ezeatId,
+        name: reg.name,
+        slug: reg.domain?.split('.')[0] ?? '',
+        url: reg.domain ?? '',
+        status: 'orphan',
+        plan: '—',
+        createdAt: reg.createdAt.toISOString(),
+        suspendedAt: null,
+        suspensionReason: '',
+        live: false,
+        unregistered: false,
+      })
+    }
+  }
+
+  return rows.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** Quita un registro local huérfano (el tenant ya no existe en el SaaS). */
+export async function purgeOrphanRecord(ezeatId: string): Promise<DeleteRestaurantResult> {
+  const user = await requireSession()
+  if (user.role !== 'ADMIN') return { ok: false, error: 'No autorizado' }
+
+  // Verificar que de verdad esté muerto antes de borrar el registro: si el SaaS
+  // responde, no es huérfano y borrarlo aquí lo dejaría sirviendo sin rastro.
+  try {
+    const live = await getRestaurants()
+    if (live.some(r => r.id === ezeatId)) {
+      return { ok: false, error: 'Este negocio SÍ existe en el SaaS. Usa Eliminar para darlo de baja de verdad.' }
+    }
+  } catch {
+    return { ok: false, error: 'No se pudo confirmar con el SaaS. Intenta cuando el backend responda.' }
+  }
+
+  await prisma.restaurant.deleteMany({ where: { ezeatId } })
+  revalidatePath('/subdominios')
+  revalidatePath('/restaurants')
+  return { ok: true }
+}
+
 export type DeleteRestaurantResult = { ok: true } | { ok: false; error: string }
 
 export async function deleteRestaurant(ezeatId: string): Promise<DeleteRestaurantResult> {
   const user = await requireSession()
   if (user.role !== 'ADMIN') return { ok: false, error: 'No autorizado' }
 
-  // 1. Borra el tenant en el backend SaaS (best-effort: si el backend está caído,
-  //    igual quitamos el registro local para que salga de la lista).
-  await deleteRestaurantBackend(ezeatId).catch((e) => {
-    console.error('Backend delete falló (se elimina registro local igual):', e instanceof Error ? e.message : e)
-  })
+  // El borrado del tenant real MANDA. Antes esto era best-effort (catch + log) y
+  // se borraba el registro local igual: si el backend fallaba, el negocio
+  // desaparecía del panel pero seguía vivo y sirviendo en su subdominio, sin
+  // rastro de que existía. Si el SaaS no confirma, no se toca nada y se avisa.
+  try {
+    await deleteRestaurantBackend(ezeatId)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('Backend delete falló — se conserva el registro local:', msg)
+    return {
+      ok: false,
+      error: `No se pudo eliminar el negocio en el SaaS, así que sigue activo. El registro se conservó para no perderlo de vista. Detalle: ${cleanBackendError(msg)}`,
+    }
+  }
 
-  // 2. Borra el registro local (fuente de verdad de la lista).
   await prisma.restaurant.deleteMany({ where: { ezeatId } })
 
   revalidatePath('/restaurants')
+  revalidatePath('/subdominios')
   return { ok: true }
 }
 
-export async function patchRestaurantStatus(ezeatId: string, status: string) {
+export type StatusResult = { ok: true } | { ok: false; error: string }
+
+/**
+ * Cambia el estado del tenant. `suspended` bloquea el sistema del negocio y le
+ * muestra el aviso de incumplimiento con el contacto de EzEat.
+ *
+ * El backend manda, igual que en el borrado: si el SaaS no confirma, no se marca
+ * como suspendido en el panel — decir "suspendido" mientras el negocio sigue
+ * vendiendo es peor que fallar.
+ */
+export async function patchRestaurantStatus(
+  ezeatId: string,
+  status: string,
+  opts?: { suspensionReason?: string; suspensionMessage?: string }
+): Promise<StatusResult> {
   const user = await requireSession()
-  if (user.role !== 'ADMIN') throw new Error('Forbidden')
-  await updateRestaurantStatus(ezeatId, status).catch(() => null)
-  await prisma.restaurant.update({ where: { ezeatId }, data: { status: toDbStatus(status) } })
+  if (user.role !== 'ADMIN') return { ok: false, error: 'No autorizado' }
+
+  try {
+    await updateRestaurantStatus(ezeatId, status, opts)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: `El SaaS no aplicó el cambio, el negocio sigue como estaba: ${cleanBackendError(msg)}` }
+  }
+
+  await prisma.restaurant.updateMany({ where: { ezeatId }, data: { status: toDbStatus(status) } })
   revalidatePath('/restaurants')
+  revalidatePath('/subdominios')
+  return { ok: true }
 }
 
 export async function updateRestaurant(id: string, formData: FormData) {
@@ -134,6 +280,40 @@ export async function updateRestaurant(id: string, formData: FormData) {
   })
   revalidatePath(`/restaurants/${id}`)
   revalidatePath('/restaurants')
+}
+
+/** Contacto y textos que ve un negocio suspendido. Viven en el SaaS. */
+export async function loadPlatformSettings(): Promise<PlatformSettings | null> {
+  await requireSession()
+  try {
+    return await getPlatformSettings()
+  } catch {
+    return null
+  }
+}
+
+export async function updatePlatformSettings(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireSession()
+  if (user.role !== 'ADMIN') return { ok: false, error: 'No autorizado' }
+
+  const str = (k: string) => ((formData.get(k) as string) ?? '').trim()
+  const email = str('contactEmail')
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Correo inválido' }
+
+  try {
+    await savePlatformSettings({
+      contactEmail: email,
+      contactPhone: str('contactPhone'),
+      contactWhatsapp: str('contactWhatsapp'),
+      suspensionMessage: str('suspensionMessage'),
+      notFoundMessage: str('notFoundMessage'),
+    })
+  } catch (e) {
+    return { ok: false, error: cleanBackendError(e instanceof Error ? e.message : 'Error al guardar') }
+  }
+
+  revalidatePath('/subdominios')
+  return { ok: true }
 }
 
 export type CreateRestaurantResult =

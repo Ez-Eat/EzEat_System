@@ -5,9 +5,12 @@ export interface EzEatRestaurant {
   id: string
   name: string
   slug: string
+  /** active | suspended | inactive | unknown */
   status: string
   plan: string
   createdAt: string
+  suspendedAt?: string | null
+  suspensionReason?: string
   /** Etiqueta de la instancia backend de origen (multi-instancia) */
   backendLabel?: string
 }
@@ -43,11 +46,47 @@ export async function getRestaurant(ezeatId: string): Promise<EzEatRestaurant> {
   return fetchBackend<EzEatRestaurant>(backend, `/internal/restaurants/${ezeatId}`)
 }
 
-export async function updateRestaurantStatus(ezeatId: string, status: string): Promise<void> {
+export async function updateRestaurantStatus(
+  ezeatId: string,
+  status: string,
+  opts?: { suspensionReason?: string; suspensionMessage?: string }
+): Promise<void> {
   const backend = await resolveBackendByEzeatId(ezeatId)
   await fetchBackend(backend, `/internal/restaurants/${ezeatId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...opts }),
+    revalidate: 0,
+  })
+}
+
+export interface PlatformSettings {
+  contactEmail: string
+  contactPhone: string
+  contactWhatsapp: string
+  suspensionMessage: string
+  notFoundMessage: string
+}
+
+function saasConfig(): BackendConfig | null {
+  const baseUrl = process.env.EZEAT_API_URL || ''
+  const apiKey = process.env.EZEAT_API_KEY || ''
+  return baseUrl && apiKey ? { baseUrl, apiKey, label: 'saas' } : null
+}
+
+/** Contacto/textos que ve un negocio suspendido. Viven en el SaaS; aquí se editan. */
+export async function getPlatformSettings(): Promise<PlatformSettings | null> {
+  const cfg = saasConfig()
+  if (!cfg) return null
+  const res = await fetchBackend<{ success: boolean; data: PlatformSettings }>(cfg, '/internal/platform-settings', { revalidate: 0 })
+  return res.data
+}
+
+export async function savePlatformSettings(patch: Partial<PlatformSettings>): Promise<void> {
+  const cfg = saasConfig()
+  if (!cfg) throw new Error('Backend SaaS no configurado (EZEAT_API_URL / EZEAT_API_KEY)')
+  await fetchBackend(cfg, '/internal/platform-settings', {
+    method: 'PUT',
+    body: JSON.stringify(patch),
     revalidate: 0,
   })
 }

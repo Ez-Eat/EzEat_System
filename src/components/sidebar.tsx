@@ -4,12 +4,13 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, Users2, KeyRound, ClipboardCheck,
-  ShieldCheck, History, Plus, Menu, X, MonitorSmartphone, BarChart3, Bug,
+  ShieldCheck, History, Plus, Menu, X, MonitorSmartphone, BarChart3, Bug, Globe,
 } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard',   label: 'Panel General',      icon: LayoutDashboard,    adminOnly: false },
   { href: '/restaurants', label: 'Negocios Afiliados', icon: Users2,             adminOnly: false },
+  { href: '/subdominios', label: 'Subdominios',        icon: Globe,              adminOnly: true  },
   { href: '/metrics',     label: 'Métricas SaaS',      icon: BarChart3,          adminOnly: true  },
   { href: '/errors',      label: 'Errores',            icon: Bug,                adminOnly: true  },
   { href: '/vault',       label: 'Bóveda de Accesos',  icon: KeyRound,           adminOnly: false },
