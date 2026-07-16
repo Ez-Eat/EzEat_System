@@ -1,0 +1,69 @@
+name: Deploy
+
+# Solo se dispara por push a main y a mano. No consume ninguna entrada
+# controlable por terceros (github.event.*), así que no hay superficie de
+# inyección: todo lo variable entra por secrets o por env fijos.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un deploy a la vez: dos rsync simultáneos sobre el mismo directorio se pisan.
+concurrency:
+  group: deploy-system
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DIR: /home/ezeat/EzEatSystem
+      APP: ezeat-system
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Subir código (rsync)
+        run: |
+          set -e
+          # .env vive SOLO en el server (secretos de prod, nunca en el repo).
+          # .next y node_modules se regeneran allá; .claude trae un worktree viejo.
+          rsync -az \
+            --exclude .git \
+            --exclude .env \
+            --exclude .next \
+            --exclude node_modules \
+            --exclude .claude \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DIR/"
+
+      - name: Build + restart
+        run: |
+          set -e
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -e
+             cd $DIR
+             npm ci --no-audit --no-fund
+             npx prisma generate
+             npm run build
+             pm2 restart $APP --update-env
+             pm2 save"
+
+      - name: Verificar que responde
+        run: |
+          set -e
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://system.ezeat.com.mx/login || true)
+            if [ "$code" = "200" ]; then echo "OK (HTTP $code)"; exit 0; fi
+            echo "intento $i: HTTP $code"; sleep 5
+          done
+          echo "El System no respondio 200 tras el deploy"; exit 1
