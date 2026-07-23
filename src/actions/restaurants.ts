@@ -39,6 +39,50 @@ export interface SaasMetrics {
   perTenant: { id: string; name: string; slug: string; plan: string; active: boolean; mrr: number; orders30d: number; revenue30d: number }[]
 }
 
+export interface AiUsageRow {
+  restaurantId: string | null
+  name: string
+  slug: string
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  estimatedCostUsd: number
+}
+
+export interface AiUsageReport {
+  range: { from: string; to: string }
+  total: { calls: number; inputTokens: number; outputTokens: number; estimatedCostUsd: number }
+  byRestaurant: AiUsageRow[]
+  byModel: { provider: string; model: string; calls: number; inputTokens: number; outputTokens: number; estimatedCostUsd: number }[]
+}
+
+/**
+ * Consumo de IA del SaaS: total, por negocio y por modelo.
+ *
+ * Viene de la colección AiUsage del SaaS (persistida, suma los 2 workers de pm2
+ * y sobrevive deploys) — no del contador en memoria. Rango por defecto: mes en
+ * curso. Devuelve null si el backend no responde para que el panel muestre el
+ * estado vacío en vez de reventar.
+ */
+export async function getAiUsage(from?: string, to?: string): Promise<AiUsageReport | null> {
+  await requireSession()
+  const baseUrl = process.env.EZEAT_API_URL || ''
+  const apiKey = process.env.EZEAT_API_KEY || ''
+  if (!baseUrl || !apiKey) return null
+  const qs = new URLSearchParams()
+  if (from) qs.set('from', from)
+  if (to) qs.set('to', to)
+  const path = `/internal/ai-usage${qs.toString() ? `?${qs}` : ''}`
+  try {
+    const res = await fetchBackend<{ success: boolean; data: AiUsageReport }>(
+      { baseUrl, apiKey, label: 'saas' }, path, { revalidate: 60 }
+    )
+    return res.data
+  } catch {
+    return null
+  }
+}
+
 export async function getSaasMetrics(): Promise<SaasMetrics | null> {
   await requireSession()
   const cfg = {

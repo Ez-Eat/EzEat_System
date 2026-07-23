@@ -1,10 +1,12 @@
-import { getSaasMetrics } from '@/actions/restaurants'
+import { getSaasMetrics, getAiUsage } from '@/actions/restaurants'
+import { AiUsageSection } from '@/components/metrics/ai-usage'
 import { BarChart3, TrendingUp, Users, UserCheck, UserX, AlertTriangle } from 'lucide-react'
 
 const money = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 0 })} MXN`
 
 export default async function MetricsPage() {
-  const m = await getSaasMetrics()
+  // En paralelo y con estados independientes: si una falla, la otra se sigue viendo.
+  const [m, ai] = await Promise.all([getSaasMetrics(), getAiUsage()])
 
   return (
     <div className="space-y-6">
@@ -16,6 +18,8 @@ export default async function MetricsPage() {
           <p className="text-sm text-slate-500">Ingresos, tenants y uso de la plataforma.</p>
         </div>
       </div>
+
+      <AiUsageSection usage={ai} />
 
       {!m ? (
         <div className="flex items-center gap-2 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
