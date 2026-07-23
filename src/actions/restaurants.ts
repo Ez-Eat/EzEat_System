@@ -395,7 +395,9 @@ export async function createRestaurant(formData: FormData): Promise<CreateRestau
   if (!name) return { ok: false, error: 'Nombre requerido' }
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) return { ok: false, error: 'Slug inválido (a-z, 0-9, guiones)' }
   if (!ownerEmail) return { ok: false, error: 'Correo del dueño requerido' }
-  if (!ownerPassword || ownerPassword.length < 6) return { ok: false, error: 'Contraseña mín. 6 caracteres' }
+  // Vacía = alta sobre una cuenta que ya existe, conservando su contraseña. Si se
+  // escribe, tiene que ser usable: el backend rechaza si el correo ya está tomado.
+  if (ownerPassword && ownerPassword.length < 6) return { ok: false, error: 'Contraseña mín. 6 caracteres' }
 
   const cfg = {
     baseUrl: process.env.EZEAT_API_URL || '',

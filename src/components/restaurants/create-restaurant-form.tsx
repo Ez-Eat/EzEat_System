@@ -178,10 +178,10 @@ export function CreateRestaurantForm() {
             <input name="ownerEmail" type="email" required value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} placeholder="dueno@correo.com" className={`${inputCls} pl-9`} />
           </div>
         </Field>
-        <Field label="Contraseña del dueño" required hint="Mínimo 6 caracteres.">
+        <Field label="Contraseña del dueño" hint="Mínimo 6 caracteres. Déjala vacía si ese correo ya tiene cuenta en EzEat: se conserva su contraseña actual.">
           <div className="relative">
             <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input name="ownerPassword" type={showPass ? 'text' : 'password'} required minLength={6} value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} placeholder="mín. 6 caracteres" className={`${inputCls} pl-9 pr-16`} />
+            <input name="ownerPassword" type={showPass ? 'text' : 'password'} minLength={6} value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} placeholder="mín. 6 caracteres" className={`${inputCls} pl-9 pr-16`} />
             <button type="button" onClick={() => setShowPass(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700">{showPass ? 'Ocultar' : 'Ver'}</button>
           </div>
         </Field>
